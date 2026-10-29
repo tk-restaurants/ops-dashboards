@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>OPS Dashboards</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Georgian:wght@400;500;600;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js"></script>
+<style>
+  :root {
+    --bg: #EEF1F4;
+    --panel: #FFFFFF;
+    --ink: #172033;
+    --muted: #5B6578;
+    --line: #D6DCE4;
+    --rail: #172033;
+    --rail-ink: #C9D1DE;
+    --shift: #F2B705;   /* აქტიური სექცია */
+    --data: #0E7C7B;    /* მონაცემები / ბმულები */
+    --warn-bg: #FFF4D6;
+    --err-bg: #FDE7E7;
+    --err: #B42318;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0F1520;
+      --panel: #182131;
+      --ink: #E6EAF1;
+      --muted: #98A3B5;
+      --line: #2A3547;
+      --rail: #0A0F18;
+      --rail-ink: #AEB8C8;
+      --data: #3CC4C2;
+      --warn-bg: #3A3114;
+      --err-bg: #3A1A1C;
+      --err: #F49B9B;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Noto Sans Georgian", "Sylfaen", system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.55;
+  }
+  a { color: var(--data); }
+  button { font: inherit; cursor: pointer; }
+  :focus-visible { outline: 3px solid var(--shift); outline-offset: 2px; }
+
+  .app { display: grid; grid-template-columns: 248px 1fr; min-height: 100%; }
+
+  /* მარცხენა პანელი */
+  .rail {
+    background: var(--rail);
+    color: var(--rail-ink);
+    padding: 28px 0 20px;
+    display: flex; flex-direction: column;
+    position: sticky; top: 0; height: 100vh;
+  }
+  .brand { padding: 0 24px 28px; }
+  .brand b { display: block; color: #fff; font-size: 1.35rem; font-weight: 800; letter-spacing: -0.01em; }
+  .brand span { font-size: 0.82rem; }
+  .nav { list-style: none; margin: 0; padding: 0; }
+  .nav a {
+    display: block; padding: 11px 24px 11px 21px;
+    color: var(--rail-ink); text-decoration: none;
+    border-left: 3px solid transparent;
+  }
+  .nav a:hover { color: #fff; background: rgba(255,255,255,.04); }
+  .nav a[aria-current="page"] { color: #fff; border-left-color: var(--shift); background: rgba(255,255,255,.06); font-weight: 600; }
+  .user { margin-top: auto; padding: 16px 24px 0; border-top: 1px solid rgba(255,255,255,.08); font-size: 0.85rem; }
+  .user strong { display: block; color: #fff; font-weight: 500; overflow-wrap: anywhere; }
+  .linkbtn { background: none; border: 0; padding: 0; color: var(--rail-ink); text-decoration: underline; }
+
+  main { padding: 36px clamp(18px, 4vw, 48px) 56px; max-width: 1180px; }
+  h1 { font-size: clamp(1.7rem, 3vw, 2.2rem); font-weight: 800; letter-spacing: -0.015em; margin: 0 0 6px; line-height: 1.2; }
+  .lead { color: var(--muted); margin: 0 0 28px; max-width: 64ch; }
+
+  .sources { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+  .source { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px 22px; }
+  .source h2 { font-size: 1.02rem; margin: 0 0 2px; font-weight: 600; }
+  .source .path { color: var(--muted); font-size: 0.8rem; margin: 0 0 14px; overflow-wrap: anywhere; }
+  .latest { border-left: 3px solid var(--shift); padding: 4px 0 4px 12px; margin-bottom: 14px; }
+  .latest .name { font-weight: 600; overflow-wrap: anywhere; }
+  .latest .meta { color: var(--muted); font-size: 0.85rem; }
+  .files { list-style: none; margin: 0; padding: 0; font-size: 0.88rem; }
+  .files li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-top: 1px solid var(--line); }
+  .files li span:last-child { color: var(--muted); white-space: nowrap; }
+  .files a { text-decoration: none; overflow-wrap: anywhere; }
+  .files a:hover { text-decoration: underline; }
+
+  .notice { padding: 14px 16px; border-radius: 8px; margin-bottom: 20px; max-width: 72ch; }
+  .notice.warn { background: var(--warn-bg); }
+  .notice.err { background: var(--err-bg); color: var(--err); }
+  .skeleton { color: var(--muted); }
+
+  /* შესვლის ეკრანი */
+  .signin {
+    min-height: 100vh; display: grid; place-items: center; padding: 24px;
+  }
+  .signin-card { max-width: 440px; }
+  .signin-card .mark { font-size: 3rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1; }
+  .signin-card .mark i { font-style: normal; color: var(--shift); }
+  .signin-card p { color: var(--muted); }
+  .primary {
+    background: var(--ink); color: var(--bg); border: 0; border-radius: 8px;
+    padding: 12px 20px; font-weight: 600;
+  }
+  .primary:hover { opacity: .9; }
+
+  [hidden] { display: none !important; }
+
+  @media (max-width: 760px) {
+    .app { grid-template-columns: 1fr; }
+    .rail { position: static; height: auto; padding: 16px 0 0; }
+    .brand { padding: 0 18px 12px; }
+    .nav { display: flex; overflow-x: auto; }
+    .nav a { border-left: 0; border-bottom: 3px solid transparent; white-space: nowrap; padding: 10px 14px; }
+    .nav a[aria-current="page"] { border-bottom-color: var(--shift); }
+    .user { margin: 0; padding: 10px 18px; border-top: 0; }
+  }
+</style>
+</head>
+<body>
+
+<!-- შესვლის ეკრანი -->
+<section class="signin" id="signin" hidden>
+  <div class="signin-card">
+    <div class="mark">OPS<i>.</i></div>
+    <h1>OPS Dashboards</h1>
+    <p>ოპერირების ყოველკვირეული რეპორტები ერთ ადგილას. შესასვლელად გამოიყენეთ სამსახურის Microsoft-ის ანგარიში.</p>
+    <button class="primary" id="loginBtn">შესვლა Microsoft-ით</button>
+    <p id="loginError" class="notice err" hidden></p>
+  </div>
+</section>
+
+<!-- აპლიკაცია -->
+<div class="app" id="app" hidden>
+  <aside class="rail">
+    <div class="brand"><b>OPS Dashboards</b><span>T&amp;K Restaurants</span></div>
+    <nav aria-label="დეშბორდები">
+      <ul class="nav" id="nav"></ul>
+    </nav>
+    <div class="user">
+      <strong id="userName"></strong>
+      <button class="linkbtn" id="logoutBtn">გასვლა</button>
+    </div>
+  </aside>
+  <main id="main"></main>
+</div>
+
+<script>
+/* ================= კონფიგურაცია ================= */
+const CONFIG = {
+  clientId: "02f4f469-bc77-482b-ba91-4756357d6777",
+  tenantId: "fb24f718-0581-4832-84ce-72a6b1dd6a50",
+  siteHost: "tkrestaurants.sharepoint.com",
+  sitePath: "/sites/Operation",
+  dataRoot: "(Share Folder) MCD Operation/2. OPS Automated Reports/2. Data",
+  scopes: ["User.Read", "Sites.ReadWrite.All"]
+};
+
+const SECTIONS = [
+  { id: "coverage", title: "Assignments Coverage",
+    lead: "გრაფიკით დაფარვა: წინა კვირის ფაქტი და შემდეგი კვირის გეგმა.",
+    sources: [
+      { label: "წინა კვირა", path: "PAST week Assignments Coverage reports" },
+      { label: "შემდეგი კვირა", path: "NEXT week Assignments Coverage reports" } ] },
+  { id: "opas", title: "OPAS და ტრანსფერები",
+    lead: "OPAS-ის კვირის რეპორტები და რესტორნებს შორის პროდუქტის ტრანსფერები.",
+    sources: [ { label: "კვირის საქაღალდეები", path: "OPAS+transfers" } ] },
+  { id: "vacation", title: "შვებულებები",
+    lead: "გამოქვეყნებული შვებულებები და payroll-ის ფაილები.",
+    sources: [
+      { label: "გამოქვეყნებული შვებულებები", path: "Vacation/Posted Vacation" },
+      { label: "Payrolls", path: "Vacation/Payrolls" } ] },
+  { id: "disponibilities", title: "ხელმისაწვდომობა",
+    lead: "თანამშრომლების ხელმისაწვდომობა (Disponibilities).",
+    sources: [ { label: "Disponibilities", path: "Disponibilities" } ] }
+];
+
+/* ================= შესვლა (MSAL) ================= */
+const isLocal = ["localhost", "127.0.0.1"].includes(location.hostname);
+const redirectUri = isLocal ? location.origin : location.origin + "/ops-dashboards/";
+
+const msalApp = new msal.PublicClientApplication({
+  auth: {
+    clientId: CONFIG.clientId,
+    authority: "https://login.microsoftonline.com/" + CONFIG.tenantId,
+    redirectUri
+  },
+  cache: { cacheLocation: "localStorage" }
+});
+
+let account = null;
+
+async function getToken() {
+  const req = { scopes: CONFIG.scopes, account };
+  try {
+    return (await msalApp.acquireTokenSilent(req)).accessToken;
+  } catch (e) {
+    await msalApp.acquireTokenRedirect(req);
+  }
+}
+
+/* ================= Microsoft Graph ================= */
+const cache = {};
+async function graph(path) {
+  const token = await getToken();
+  const res = await fetch("https://graph.microsoft.com/v1.0" + path, {
+    headers: { Authorization: "Bearer " + token }
+  });
+  if (!res.ok) {
+    let msg = res.status + "";
+    try { const j = await res.json(); msg += " — " + (j.error && j.error.message || ""); } catch (_) {}
+    const err = new Error(msg); err.status = res.status; throw err;
+  }
+  return res.json();
+}
+
+async function driveBase() {
+  if (cache.drive) return cache.drive;
+  const site = await graph(`/sites/${CONFIG.siteHost}:${CONFIG.sitePath}`);
+  cache.drive = `/sites/${site.id}/drive`;
+  return cache.drive;
+}
+
+function encPath(p) { return p.split("/").map(encodeURIComponent).join("/"); }
+
+async function listFolder(relPath) {
+  const base = await driveBase();
+  const full = encPath(CONFIG.dataRoot + "/" + relPath);
+  const data = await graph(`${base}/root:/${full}:/children?$top=200&$select=name,size,lastModifiedDateTime,webUrl,folder,file`);
+  return data.value
+    .filter(i => !i.name.startsWith("_"))
+    .sort((a, b) => b.lastModifiedDateTime.localeCompare(a.lastModifiedDateTime));
+}
+
+/* ================= ინტერფეისი ================= */
+const fmtDate = s => new Date(s).toLocaleString("ka-GE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+const fmtSize = n => n > 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB";
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function renderNav(active) {
+  document.getElementById("nav").innerHTML = SECTIONS.map(s =>
+    `<li><a href="#${s.id}" ${s.id === active ? 'aria-current="page"' : ""}>${esc(s.title)}</a></li>`).join("");
+}
+
+async function renderSection(id) {
+  const sec = SECTIONS.find(s => s.id === id) || SECTIONS[0];
+  renderNav(sec.id);
+  const main = document.getElementById("main");
+  main.innerHTML = `
+    <h1>${esc(sec.title)}</h1>
+    <p class="lead">${esc(sec.lead)}</p>
+    <div class="notice warn">დეშბორდი ჯერ აწყობის პროცესშია. ქვემოთ ჩანს, რომ საიტი SharePoint-ის რეპორტებს ხედავს: უახლესი ფაილი და ბოლო რეპორტები.</div>
+    <div class="sources">${sec.sources.map((s, i) => `
+      <article class="source" id="src-${i}">
+        <h2>${esc(s.label)}</h2>
+        <p class="path">${esc(s.path)}</p>
+        <p class="skeleton">იტვირთება…</p>
+      </article>`).join("")}
+    </div>`;
+
+  sec.sources.forEach(async (s, i) => {
+    const box = document.getElementById("src-" + i);
+    try {
+      const items = await listFolder(s.path);
+      if (!items.length) { box.querySelector(".skeleton").textContent = "საქაღალდე ცარიელია."; return; }
+      const top = items[0];
+      box.querySelector(".skeleton").outerHTML = `
+        <div class="latest">
+          <div class="name"><a href="${esc(top.webUrl)}" target="_blank" rel="noopener">${esc(top.name)}</a></div>
+          <div class="meta">უახლესი · განახლდა ${fmtDate(top.lastModifiedDateTime)}${top.file ? " · " + fmtSize(top.size) : ""}</div>
+        </div>
+        <ul class="files">${items.slice(1, 8).map(f => `
+          <li><a href="${esc(f.webUrl)}" target="_blank" rel="noopener">${f.folder ? "📁 " : ""}${esc(f.name)}</a>
+          <span>${fmtDate(f.lastModifiedDateTime)}</span></li>`).join("")}
+        </ul>`;
+    } catch (e) {
+      box.querySelector(".skeleton").outerHTML =
+        `<p class="notice err">ფაილების წაკითხვა ვერ მოხერხდა (${esc(e.message)}). ${e.status === 403
+          ? "თქვენს ანგარიშს ამ საქაღალდეზე წვდომა არ აქვს." : e.status === 404
+          ? "საქაღალდე ამ მისამართზე ვერ მოიძებნა." : "განაახლეთ გვერდი და სცადეთ ხელახლა."}</p>`;
+    }
+  });
+}
+
+function route() { renderSection(location.hash.replace("#", "")); }
+
+/* ================= გაშვება ================= */
+(async function start() {
+  try {
+    const result = await msalApp.handleRedirectPromise();
+    account = (result && result.account) || msalApp.getAllAccounts()[0] || null;
+  } catch (e) {
+    const el = document.getElementById("loginError");
+    el.textContent = "შესვლა ვერ მოხერხდა: " + e.message;
+    el.hidden = false;
+  }
+
+  document.getElementById("loginBtn").onclick = () => msalApp.loginRedirect({ scopes: CONFIG.scopes });
+  document.getElementById("logoutBtn").onclick = () => msalApp.logoutRedirect({ account });
+
+  if (!account) { document.getElementById("signin").hidden = false; return; }
+
+  document.getElementById("userName").textContent = account.name || account.username;
+  document.getElementById("app").hidden = false;
+  window.addEventListener("hashchange", route);
+  route();
+})();
+</script>
+</body>
+</html>
